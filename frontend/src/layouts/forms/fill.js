@@ -375,9 +375,9 @@ function FillForm() {
                         }
                       }}
                       sx={{
-                        color: "#1A73E8",
+                        color: form.brand_colors?.primary || "#1A73E8",
                         "&.Mui-checked": {
-                          color: "#1A73E8",
+                          color: form.brand_colors?.primary || "#1A73E8",
                         },
                         mt: -0.5,
                         flexShrink: 0,
@@ -450,9 +450,9 @@ function FillForm() {
                     <Radio
                       value={option}
                       sx={{
-                        color: "#1A73E8",
+                        color: form.brand_colors?.primary || "#1A73E8",
                         "&.Mui-checked": {
-                          color: "#1A73E8",
+                          color: form.brand_colors?.primary || "#1A73E8",
                         },
                         mt: -0.5,
                         flexShrink: 0,
@@ -515,9 +515,9 @@ function FillForm() {
                     <Radio
                       value={option}
                       sx={{
-                        color: "#1A73E8",
+                        color: form.brand_colors?.primary || "#1A73E8",
                         "&.Mui-checked": {
-                          color: "#1A73E8",
+                          color: form.brand_colors?.primary || "#1A73E8",
                         },
                         mt: -0.5,
                         flexShrink: 0,
@@ -577,10 +577,10 @@ function FillForm() {
                     borderColor: "#e1dfdd",
                   },
                   "&:hover fieldset": {
-                    borderColor: "#1A73E8",
+                    borderColor: form.brand_colors?.primary || "#1A73E8",
                   },
                   "&.Mui-focused fieldset": {
-                    borderColor: "#1A73E8",
+                    borderColor: form.brand_colors?.primary || "#1A73E8",
                   },
                 },
               }}
@@ -689,7 +689,7 @@ function FillForm() {
               onChange={(e, newValue) => handleResponseChange(question.id, newValue)}
               size="large"
               sx={{
-                color: "#1A73E8",
+                color: form.brand_colors?.primary || "#1A73E8",
                 "& .MuiRating-iconEmpty": {
                   color: "#e1dfdd",
                 },
@@ -867,6 +867,29 @@ function FillForm() {
             px: { xs: 2, sm: 3 },
           }}
         >
+          {/* Banner Image */}
+          {form.banner_image && (
+            <Box sx={{ mb: 3 }}>
+              <img
+                src={`http://localhost:8000/api/files/${form.banner_image?.replace(
+                  "uploads/",
+                  ""
+                )}`}
+                alt="Banner"
+                style={{
+                  width: "100%",
+                  maxHeight: 200,
+                  objectFit: "cover",
+                  borderRadius: 8,
+                }}
+                onError={(e) => {
+                  console.error("Banner image failed to load:", e.target.src);
+                  e.target.style.display = "none";
+                }}
+              />
+            </Box>
+          )}
+
           {/* Form Header */}
           <Paper
             elevation={0}
@@ -876,32 +899,55 @@ function FillForm() {
               backgroundColor: "white",
               border: "1px solid #e1dfdd",
               borderRadius: 2,
-              borderTop: "4px solid #1A73E8",
+              borderTop: `4px solid ${form.brand_colors?.primary || "#1A73E8"}`,
             }}
           >
-            <MDTypography
-              variant="h4"
-              sx={{
-                color: "#323130",
-                fontWeight: 600,
-                mb: 2,
-                fontSize: { xs: "20px", sm: "24px", md: "28px" },
-              }}
-            >
-              {form.title}
-            </MDTypography>
-            {form.description && (
-              <MDTypography
-                variant="body1"
-                sx={{
-                  color: "#605e5c",
-                  fontSize: "16px",
-                  lineHeight: 1.5,
-                }}
-              >
-                {form.description}
-              </MDTypography>
-            )}
+            <Box display="flex" alignItems="center" mb={2}>
+              {form.logo_image && (
+                <img
+                  src={`http://localhost:8000/api/files/${form.logo_image?.replace(
+                    "uploads/",
+                    ""
+                  )}`}
+                  alt="Logo"
+                  style={{
+                    width: 60,
+                    height: 60,
+                    objectFit: "contain",
+                    marginRight: 16,
+                  }}
+                  onError={(e) => {
+                    console.error("Logo image failed to load:", e.target.src);
+                    e.target.style.display = "none";
+                  }}
+                />
+              )}
+              <Box>
+                <MDTypography
+                  variant="h4"
+                  sx={{
+                    color: form.brand_colors?.primary || "#323130",
+                    fontWeight: 600,
+                    mb: 1,
+                    fontSize: { xs: "20px", sm: "24px", md: "28px" },
+                  }}
+                >
+                  {form.title}
+                </MDTypography>
+                {form.description && (
+                  <MDTypography
+                    variant="body1"
+                    sx={{
+                      color: "#605e5c",
+                      fontSize: "16px",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {form.description}
+                  </MDTypography>
+                )}
+              </Box>
+            </Box>
           </Paper>
 
           {/* User Information Section */}
@@ -1002,8 +1048,8 @@ function FillForm() {
                   disabled={authLoading}
                   sx={{
                     backgroundColor: "white",
-                    color: "#1A73E8",
-                    border: "2px solid #1A73E8",
+                    color: form.brand_colors?.primary || "#1A73E8",
+                    border: `2px solid ${form.brand_colors?.primary || "#1A73E8"}`,
                     px: { xs: 2, sm: 3 },
                     py: 1.5,
                     borderRadius: 1,
@@ -1012,8 +1058,8 @@ function FillForm() {
                     width: { xs: "100%", sm: "auto" },
                     "&:hover": {
                       backgroundColor: "#f8f9fa",
-                      borderColor: "#1557B0",
-                      color: "#1557B0",
+                      borderColor: form.brand_colors?.secondary || "#1557B0",
+                      color: form.brand_colors?.secondary || "#1557B0",
                     },
                     "&:disabled": {
                       backgroundColor: "#f5f5f5",
@@ -1085,8 +1131,8 @@ function FillForm() {
                   disabled={submitting}
                   sx={{
                     backgroundColor: "white",
-                    color: "#1A73E8",
-                    border: "2px solid #1A73E8",
+                    color: form.brand_colors?.primary || "#1A73E8",
+                    border: `2px solid ${form.brand_colors?.primary || "#1A73E8"}`,
                     px: { xs: 3, sm: 4 },
                     py: 1.5,
                     borderRadius: 1,
@@ -1096,8 +1142,8 @@ function FillForm() {
                     width: { xs: "100%", sm: "auto" },
                     "&:hover": {
                       backgroundColor: "#f8f9fa",
-                      borderColor: "#1557B0",
-                      color: "#1557B0",
+                      borderColor: form.brand_colors?.secondary || "#1557B0",
+                      color: form.brand_colors?.secondary || "#1557B0",
                     },
                     "&:disabled": {
                       backgroundColor: "#f5f5f5",
@@ -1110,6 +1156,32 @@ function FillForm() {
                 </MDButton>
               </Box>
             </>
+          )}
+
+          {/* Footer */}
+          {form.footer_text && (
+            <Paper
+              elevation={0}
+              sx={{
+                mt: 4,
+                p: { xs: 2, sm: 3 },
+                backgroundColor: "white",
+                border: "1px solid #e1dfdd",
+                borderRadius: 2,
+                textAlign: "center",
+              }}
+            >
+              <MDTypography
+                variant="body2"
+                sx={{
+                  color: "#605e5c",
+                  fontSize: "14px",
+                  lineHeight: 1.5,
+                }}
+              >
+                {form.footer_text}
+              </MDTypography>
+            </Paper>
           )}
         </Box>
       </Box>

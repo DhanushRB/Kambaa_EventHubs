@@ -111,6 +111,12 @@ class Form(Base):
     register_link = Column(String(500))  # Registration link for attendance forms
     is_active = Column(Integer, default=1)
     created_by = Column(String(50))
+    # Branding fields
+    banner_image = Column(String(500))  # Banner image URL/path
+    logo_image = Column(String(500))   # Logo image URL/path
+    footer_text = Column(String(1000)) # Footer text
+    brand_colors = Column(String(500)) # JSON string for brand colors
+    qr_code_image = Column(String(500)) # QR code image path
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 

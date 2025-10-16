@@ -5,7 +5,6 @@ import Card from "@mui/material/Card";
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
 import MDButton from "components/MDButton";
-import MDInput from "components/MDInput";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
@@ -18,16 +17,13 @@ import {
   MenuItem,
   Switch,
   FormControlLabel,
-  IconButton,
-  Divider,
-  Chip,
   Box,
-  Paper,
   Accordion,
   AccordionSummary,
   AccordionDetails,
 } from "@mui/material";
 import axios from "axios";
+import FormBuilder from "components/FormBuilder";
 
 function CreateForm() {
   const { type, formId } = useParams();
@@ -49,6 +45,14 @@ function CreateForm() {
     },
     event_id: null,
     register_link: "",
+    // Branding fields
+    banner_image: null,
+    logo_image: null,
+    footer_text: "",
+    brand_colors: {
+      primary: "#1976d2",
+      secondary: "#dc004e",
+    },
   });
 
   const [events, setEvents] = useState([]);
@@ -96,6 +100,7 @@ function CreateForm() {
       });
       const form = response.data;
       setFormData({
+        id: form.id,
         title: form.title,
         description: form.description,
         type: form.type,
@@ -110,6 +115,14 @@ function CreateForm() {
         })),
         settings: form.settings,
         register_link: form.register_link || "",
+        // Branding fields
+        banner_image: form.banner_image || null,
+        logo_image: form.logo_image || null,
+        footer_text: form.footer_text || "",
+        brand_colors: form.brand_colors || {
+          primary: "#1976d2",
+          secondary: "#dc004e",
+        },
       });
     } catch (error) {
       console.error("Error fetching form:", error);
@@ -213,25 +226,44 @@ function CreateForm() {
 
       console.log("Submitting form payload:", payload);
 
+      let response;
       if (isEditing) {
-        await axios.put(`http://localhost:8000/api/forms/${formId}`, payload, {
+        response = await axios.put(`http://localhost:8000/api/forms/${formId}`, payload, {
           headers: { Authorization: `Bearer ${token}` },
         });
+        // Return the form ID for editing case
+        return { id: formId };
       } else {
-        const response = await axios.post("http://localhost:8000/api/forms", payload, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        // Use enhanced API for new forms with branding
+        response = await axios.post(
+          "http://localhost:8000/api/forms/create-with-branding",
+          payload,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
         console.log("Form created successfully:", response.data);
+        // Store form ID for QR code generation
+        setFormData((prev) => ({ ...prev, id: response.data.id }));
+        // Return the response data with form ID
+        return response.data;
       }
-
-      navigate("/forms");
     } catch (error) {
       console.error("Error creating form:", error);
       const errorMessage =
         error.response?.data?.detail || error.message || "Unknown error occurred";
-      alert(`Error creating form: ${errorMessage}`);
+      throw new Error(errorMessage);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveOnly = async () => {
+    try {
+      await handleSubmit();
+      navigate("/forms");
+    } catch (error) {
+      alert("Error saving form: " + (error.message || error));
     }
   };
 
@@ -285,7 +317,7 @@ function CreateForm() {
                   <MDButton
                     variant="contained"
                     color="white"
-                    onClick={handleSubmit}
+                    onClick={handleSaveOnly}
                     disabled={loading}
                     startIcon={<Icon>save</Icon>}
                   >
@@ -295,7 +327,7 @@ function CreateForm() {
               </MDBox>
 
               <MDBox p={3}>
-                {/* Form Settings */}
+                {/* Basic Form Settings */}
                 <Card sx={{ mb: 3 }}>
                   <MDBox p={3}>
                     <MDTypography variant="h6" mb={2}>
@@ -453,38 +485,22 @@ function CreateForm() {
                   </MDBox>
                 </Card>
 
-                {/* Questions */}
-                <Card>
-                  <MDBox p={3}>
-                    <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-                      <MDTypography variant="h6">
-                        {type === "attendance" ? "Attendance Fields" : "Questions"}
-                      </MDTypography>
-                      {type !== "attendance" && (
-                        <MDButton
-                          variant="gradient"
-                          color="info"
-                          onClick={addQuestion}
-                          startIcon={<Icon>add</Icon>}
-                        >
-                          Add Question
-                        </MDButton>
-                      )}
-                    </MDBox>
+                {/* Enhanced Form Builder */}
+                {type !== "attendance" && (
+                  <FormBuilder
+                    formData={formData}
+                    setFormData={setFormData}
+                    formType={type}
+                    onSave={handleSubmit}
+                    loading={loading}
+                    isEditing={isEditing}
+                  />
+                )}
 
-                    {formData.questions.length === 0 && type !== "attendance" ? (
-                      <MDBox textAlign="center" py={4}>
-                        <Icon sx={{ fontSize: 48, color: "text.secondary", mb: 2 }}>
-                          help_outline
-                        </Icon>
-                        <MDTypography variant="h6" color="text.secondary" mb={1}>
-                          No questions yet
-                        </MDTypography>
-                        <MDTypography variant="body2" color="text.secondary">
-                          Add your first question to get started
-                        </MDTypography>
-                      </MDBox>
-                    ) : type === "attendance" ? (
+                {/* Attendance Form Display */}
+                {type === "attendance" && (
+                  <Card>
+                    <MDBox p={3}>
                       <MDBox textAlign="center" py={4}>
                         <Icon sx={{ fontSize: 48, color: "success.main", mb: 2 }}>how_to_reg</Icon>
                         <MDTypography variant="h6" color="text.secondary" mb={1}>
@@ -495,212 +511,9 @@ function CreateForm() {
                           attendance marking
                         </MDTypography>
                       </MDBox>
-                    ) : (
-                      formData.questions.map((question, index) => (
-                        <MDBox key={question.id}>
-                          <Paper sx={{ p: 3, mb: 2, border: "1px solid", borderColor: "divider" }}>
-                            <MDBox
-                              display="flex"
-                              justifyContent="space-between"
-                              alignItems="flex-start"
-                              mb={2}
-                            >
-                              <Chip label={`Question ${index + 1}`} color="primary" size="small" />
-                              <IconButton
-                                size="small"
-                                color="error"
-                                onClick={() => removeQuestion(question.id)}
-                              >
-                                <Icon>delete</Icon>
-                              </IconButton>
-                            </MDBox>
-
-                            <Grid container spacing={2}>
-                              <Grid item xs={12}>
-                                <TextField
-                                  fullWidth
-                                  label="Question Text"
-                                  value={question.question_text}
-                                  onChange={(e) =>
-                                    updateQuestion(question.id, "question_text", e.target.value)
-                                  }
-                                  required
-                                />
-                              </Grid>
-
-                              <Grid item xs={12} sm={6}>
-                                <FormControl fullWidth>
-                                  <InputLabel>Question Type</InputLabel>
-                                  <Select
-                                    value={question.question_type}
-                                    onChange={(e) =>
-                                      updateQuestion(question.id, "question_type", e.target.value)
-                                    }
-                                    variant="outlined"
-                                    sx={{
-                                      minHeight: 56,
-                                      "& .MuiOutlinedInput-root": {
-                                        minHeight: 56,
-                                        "& fieldset": {
-                                          borderColor: "rgba(0, 0, 0, 0.23)",
-                                        },
-                                        "&:hover fieldset": {
-                                          borderColor: "rgba(0, 0, 0, 0.87)",
-                                        },
-                                        "&.Mui-focused fieldset": {
-                                          borderColor: "#1976d2",
-                                          borderWidth: 2,
-                                        },
-                                      },
-                                    }}
-                                  >
-                                    {questionTypes.map((qt) => (
-                                      <MenuItem key={qt.value} value={qt.value}>
-                                        <Box display="flex" alignItems="center">
-                                          <Icon sx={{ mr: 1 }}>{qt.icon}</Icon>
-                                          {qt.label}
-                                        </Box>
-                                      </MenuItem>
-                                    ))}
-                                  </Select>
-                                </FormControl>
-                              </Grid>
-
-                              {type === "quiz" && (
-                                <Grid item xs={12} sm={6}>
-                                  <TextField
-                                    fullWidth
-                                    label="Points"
-                                    type="number"
-                                    value={question.points}
-                                    onChange={(e) =>
-                                      updateQuestion(
-                                        question.id,
-                                        "points",
-                                        parseInt(e.target.value) || 0
-                                      )
-                                    }
-                                  />
-                                </Grid>
-                              )}
-
-                              <Grid item xs={12}>
-                                <FormControlLabel
-                                  control={
-                                    <Switch
-                                      checked={question.is_required}
-                                      onChange={(e) =>
-                                        updateQuestion(question.id, "is_required", e.target.checked)
-                                      }
-                                    />
-                                  }
-                                  label="Required"
-                                />
-                              </Grid>
-
-                              {/* Options for choice questions */}
-                              {["multiple_choice", "single_choice"].includes(
-                                question.question_type
-                              ) && (
-                                <Grid item xs={12}>
-                                  <MDTypography variant="subtitle2" mb={1}>
-                                    Options
-                                  </MDTypography>
-                                  {question.options.map((option, optionIndex) => (
-                                    <MDBox
-                                      key={optionIndex}
-                                      display="flex"
-                                      alignItems="center"
-                                      mb={1}
-                                    >
-                                      <TextField
-                                        fullWidth
-                                        size="small"
-                                        value={option}
-                                        placeholder={`Option ${optionIndex + 1}`}
-                                        onChange={(e) =>
-                                          updateOption(question.id, optionIndex, e.target.value)
-                                        }
-                                        sx={{ mr: 1 }}
-                                      />
-                                      {type === "quiz" && (
-                                        <FormControlLabel
-                                          control={
-                                            <Switch
-                                              size="small"
-                                              checked={question.correct_answer === option}
-                                              onChange={(e) =>
-                                                updateQuestion(
-                                                  question.id,
-                                                  "correct_answer",
-                                                  e.target.checked ? option : ""
-                                                )
-                                              }
-                                            />
-                                          }
-                                          label="Correct"
-                                          sx={{ mr: 1 }}
-                                        />
-                                      )}
-                                      <IconButton
-                                        size="small"
-                                        color="error"
-                                        onClick={() => removeOption(question.id, optionIndex)}
-                                        disabled={question.options.length <= 2}
-                                      >
-                                        <Icon>remove</Icon>
-                                      </IconButton>
-                                    </MDBox>
-                                  ))}
-                                  <MDButton
-                                    size="small"
-                                    onClick={() => addOption(question.id)}
-                                    startIcon={<Icon>add</Icon>}
-                                  >
-                                    Add Option
-                                  </MDButton>
-                                </Grid>
-                              )}
-
-                              {/* Yes/No options */}
-                              {question.question_type === "yes_no" && type === "quiz" && (
-                                <Grid item xs={12}>
-                                  <FormControl fullWidth>
-                                    <InputLabel>Correct Answer</InputLabel>
-                                    <Select
-                                      value={question.correct_answer || ""}
-                                      onChange={(e) =>
-                                        updateQuestion(
-                                          question.id,
-                                          "correct_answer",
-                                          e.target.value
-                                        )
-                                      }
-                                    >
-                                      <MenuItem value="Yes">Yes</MenuItem>
-                                      <MenuItem value="No">No</MenuItem>
-                                    </Select>
-                                  </FormControl>
-                                </Grid>
-                              )}
-                            </Grid>
-                          </Paper>
-                          <MDBox display="flex" justifyContent="center" mb={2}>
-                            <MDButton
-                              variant="outlined"
-                              color="info"
-                              onClick={addQuestion}
-                              startIcon={<Icon>add</Icon>}
-                              size="small"
-                            >
-                              Add Question
-                            </MDButton>
-                          </MDBox>
-                        </MDBox>
-                      ))
-                    )}
-                  </MDBox>
-                </Card>
+                    </MDBox>
+                  </Card>
+                )}
               </MDBox>
             </Card>
           </Grid>

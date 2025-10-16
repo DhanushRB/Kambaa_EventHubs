@@ -95,12 +95,9 @@ function FormResponses() {
     try {
       if (showLoading) setLoading(true);
       const token = localStorage.getItem("token");
-      const response = await axios.get(
-        `http://localhost:8000/api/forms/${formId}/responses`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
+      const response = await axios.get(`http://localhost:8000/api/forms/${formId}/responses`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const newData = response.data;
       if (previousCount > 0 && newData.length > previousCount) {
         setNewResponsesCount(newData.length - previousCount);

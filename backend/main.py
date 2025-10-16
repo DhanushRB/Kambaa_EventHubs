@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, status, Request, Response a
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.security import HTTPBearer, HTTPBasic, HTTPBasicCredentials
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
 from datetime import timedelta, datetime
@@ -109,6 +110,10 @@ app.include_router(forms_router, prefix="/api")
 
 # Include payment routes
 app.include_router(payment_router, prefix="/api")
+
+# Mount static files for serving uploaded images
+os.makedirs("uploads", exist_ok=True)
+app.mount("/api/files", StaticFiles(directory="uploads"), name="files")
 
 
 
@@ -2995,56 +3000,69 @@ def qa_debug_info(db: Session = Depends(get_db)):
             "error": str(e)
         }
 
-# Fix the duplicate submit-question endpoint and ensure proper routing
-@app.post("/api/qa/submit-question")
-def submit_qa_question_fixed(question_data: QAQuestionRequest, db: Session = Depends(get_db)):
+
+# Email unsubscribe functionality using FastAPI
+class UnsubscribeRequest(BaseModel):
+    email: str
+    reason: Optional[str] = None
+
+def init_unsubscribe_db():
+    import sqlite3
+    conn = sqlite3.connect('students_db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS unsubscribed_emails (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            reason TEXT,
+            unsubscribed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+@app.post("/api/unsubscribe")
+def unsubscribe(request: UnsubscribeRequest):
+    import sqlite3
+    
+    email = request.email.strip().lower()
+    reason = request.reason.strip() if request.reason else ""
+    
+    if not email:
+        raise HTTPException(status_code=400, detail="Email cannot be empty")
+    
     try:
-        print(f"Submitting question from user: {question_data.user_email}")
+        init_unsubscribe_db()  # Ensure table exists
+        conn = sqlite3.connect('email_management.db')
+        cursor = conn.cursor()
         
-        # Get active event first
-        active_event = db.query(Event).filter(Event.qa_active == 1).first()
-        if not active_event:
-            print("No active Q/A session")
-            raise HTTPException(status_code=404, detail="No active Q/A session")
-        
-        # Verify user exists
-        user = db.query(User).filter(
-            User.email == question_data.user_email,
-            User.registration_id == question_data.registration_id
-        ).first()
-        
-        if not user:
-            print(f"User not found: {question_data.user_email} with reg_id: {question_data.registration_id}")
-            raise HTTPException(status_code=404, detail="User not found")
-        
-        # Create new question
-        new_question = QAQuestion(
-            user_email=question_data.user_email,
-            user_name=question_data.user_name,
-            registration_id=question_data.registration_id,
-            question=question_data.question.strip(),
-            event_id=active_event.id,
-            status="pending"
+        cursor.execute(
+            'INSERT OR REPLACE INTO unsubscribed_emails (email, reason) VALUES (?, ?)',
+            (email, reason)
         )
         
-        db.add(new_question)
-        db.commit()
-        db.refresh(new_question)
-        
-        print(f"Question submitted successfully with ID: {new_question.id}")
+        conn.commit()
+        conn.close()
         
         return {
-            "message": "Question submitted successfully", 
-            "question_id": new_question.id,
-            "status": "success"
+            'message': 'Successfully unsubscribed',
+            'email': email
         }
         
-    except HTTPException:
-        raise
     except Exception as e:
-        print(f"Error submitting question: {str(e)}")
-        db.rollback()
-        raise HTTPException(status_code=500, detail="Failed to submit question")
+        raise HTTPException(status_code=500, detail="Database error occurred")
+
+def is_email_unsubscribed(email):
+    import sqlite3
+    try:
+        conn = sqlite3.connect('email_management.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT 1 FROM unsubscribed_emails WHERE email = ?', (email.lower(),))
+        result = cursor.fetchone()
+        conn.close()
+        return result is not None
+    except:
+        return False
 
 if __name__ == "__main__":
     print("Starting Event Dashboard API...")

@@ -1,13 +1,21 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import json
 import uuid
+import io
 
 from database import get_db, Form, FormQuestion, FormResponse, FormAnalytics, User
 from auth import verify_token
+from form_utils import (
+    parse_excel_to_questions, 
+    generate_qr_code_with_branding, 
+    save_uploaded_file,
+    create_form_template_excel
+)
 
 # Import audit logging function
 def log_audit_action(db: Session, user_email: str, user_role: str, action: str, resource_type: str, resource_id: str = None, details: str = None):
@@ -85,6 +93,11 @@ class FormCreate(BaseModel):
     settings: Optional[Dict[str, Any]] = {}
     event_id: Optional[int] = None
     register_link: Optional[str] = None
+    # Branding fields
+    banner_image: Optional[str] = None
+    logo_image: Optional[str] = None
+    footer_text: Optional[str] = None
+    brand_colors: Optional[Dict[str, str]] = None
 
 class FormUpdate(BaseModel):
     title: Optional[str] = None
@@ -93,6 +106,11 @@ class FormUpdate(BaseModel):
     questions: Optional[List[QuestionCreate]] = None
     settings: Optional[Dict[str, Any]] = None
     register_link: Optional[str] = None
+    # Branding fields
+    banner_image: Optional[str] = None
+    logo_image: Optional[str] = None
+    footer_text: Optional[str] = None
+    brand_colors: Optional[Dict[str, str]] = None
 
 class ResponseSubmit(BaseModel):
     form_id: int
@@ -253,6 +271,11 @@ def get_form(form_id: int, current_user: str = Depends(verify_token), db: Sessio
         "is_active": bool(form.is_active),
         "settings": json.loads(form.settings) if form.settings else {},
         "register_link": form.register_link,
+        # Branding fields
+        "banner_image": form.banner_image,
+        "logo_image": form.logo_image,
+        "footer_text": form.footer_text,
+        "brand_colors": json.loads(form.brand_colors) if form.brand_colors else {"primary": "#1976d2", "secondary": "#dc004e"},
         "questions": [{
             "id": q.id,
             "question_text": q.question_text,
@@ -295,6 +318,15 @@ def update_form(form_id: int, form_data: FormUpdate, current_user: str = Depends
         form.settings = json.dumps(form_data.settings)
     if form_data.register_link is not None:
         form.register_link = form_data.register_link
+    # Update branding fields
+    if form_data.banner_image is not None:
+        form.banner_image = form_data.banner_image
+    if form_data.logo_image is not None:
+        form.logo_image = form_data.logo_image
+    if form_data.footer_text is not None:
+        form.footer_text = form_data.footer_text
+    if form_data.brand_colors is not None:
+        form.brand_colors = json.dumps(form_data.brand_colors)
     
     if form_data.questions is not None:
         # Delete existing questions
@@ -414,6 +446,11 @@ def get_public_form(form_hash: str, db: Session = Depends(get_db)):
         "event_name": event_name,
         "settings": json.loads(form.settings) if form.settings else {},
         "register_link": form.register_link,
+        # Include branding fields for public view
+        "banner_image": form.banner_image,
+        "logo_image": form.logo_image,
+        "footer_text": form.footer_text,
+        "brand_colors": json.loads(form.brand_colors) if form.brand_colors else {"primary": "#1976d2", "secondary": "#dc004e"},
         "questions": [{
             "id": q.id,
             "question_text": q.question_text,
@@ -934,6 +971,232 @@ def get_user_privileges(current_user: str = Depends(verify_token), db: Session =
         "is_manager": admin.role == "manager",
         "can_manage_all_forms": admin.role in ["admin", "manager"]
     }
+
+# Excel Import Endpoints
+@router.post("/forms/import-excel")
+async def import_excel_questions(file: UploadFile = File(...), form_type: str = "quiz", current_user: str = Depends(verify_token)):
+    """Import questions from Excel file"""
+    try:
+        # Validate file type
+        if not file.filename.endswith(('.xlsx', '.xls')):
+            raise HTTPException(status_code=400, detail="Only Excel files (.xlsx, .xls) are supported")
+        
+        # Read file content
+        file_content = await file.read()
+        
+        # Parse Excel to questions
+        questions = parse_excel_to_questions(file_content, form_type)
+        
+        if not questions:
+            raise HTTPException(status_code=400, detail="No valid questions found in Excel file")
+        
+        return {
+            "message": f"Successfully imported {len(questions)} questions",
+            "questions": questions
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error importing Excel file: {str(e)}")
+
+@router.get("/forms/excel-template")
+def download_excel_template():
+    """Download Excel template for form import"""
+    try:
+        template_content = create_form_template_excel()
+        
+        return StreamingResponse(
+            io.BytesIO(template_content),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment; filename=form_template.xlsx"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error creating template: {str(e)}")
+
+# File Upload Endpoints
+@router.post("/forms/upload-image")
+async def upload_image(file: UploadFile = File(...), upload_type: str = "banner", current_user: str = Depends(verify_token)):
+    """Upload banner or logo image"""
+    try:
+        # Validate file type
+        allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+        if file.content_type not in allowed_types:
+            raise HTTPException(status_code=400, detail="Only image files (JPEG, PNG, GIF, WebP) are supported")
+        
+        # Validate file size (max 5MB)
+        file_content = await file.read()
+        if len(file_content) > 5 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="File size must be less than 5MB")
+        
+        # Save file
+        file_path = save_uploaded_file(file_content, file.filename, upload_type)
+        
+        return {
+            "message": "Image uploaded successfully",
+            "file_path": file_path,
+            "file_url": f"/api/files/{file_path}"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error uploading image: {str(e)}")
+
+class QRCodeRequest(BaseModel):
+    form_title: Optional[str] = None
+    form_description: Optional[str] = None
+    logo_path: Optional[str] = None
+    banner_path: Optional[str] = None
+
+# QR Code Generation
+@router.post("/forms/{form_id}/generate-qr")
+def generate_form_qr_code(
+    form_id: int, 
+    qr_data: Optional[QRCodeRequest] = None,
+    current_user: str = Depends(verify_token), 
+    db: Session = Depends(get_db)
+):
+    """Generate QR code for form with branding"""
+    try:
+        # Get form
+        form = db.query(Form).filter(Form.id == form_id).first()
+        if not form:
+            raise HTTPException(status_code=404, detail="Form not found")
+        
+        # Generate form link
+        form_hash = generate_form_hash(form)
+        form_link = f"https://events.kambaa.ai/forms/fill/{form_hash}"
+        
+        # Get event info if available
+        event_title = None
+        if form.event_id:
+            from database import Event
+            event = db.query(Event).filter(Event.id == form.event_id).first()
+            if event:
+                event_title = event.name
+        
+        # Use provided data or fall back to form data
+        title = (qr_data.form_title if qr_data else None) or form.title
+        description = (qr_data.form_description if qr_data else None) or form.description
+        logo_path = (qr_data.logo_path if qr_data else None) or getattr(form, 'logo_image', None)
+        
+        # Convert relative logo path to absolute if it exists
+        absolute_logo_path = None
+        if logo_path:
+            import os
+            # Remove uploads/ prefix if present and construct full path
+            clean_path = logo_path.replace('uploads/', '')
+            absolute_logo_path = os.path.join(os.getcwd(), 'uploads', clean_path)
+            if not os.path.exists(absolute_logo_path):
+                print(f"Logo file not found: {absolute_logo_path}")
+                absolute_logo_path = None
+        
+        # Generate QR code with branding
+        qr_base64 = generate_qr_code_with_branding(
+            form_link=form_link,
+            form_title=title,
+            logo_path=absolute_logo_path,
+            event_title=event_title,
+            description=description
+        )
+        
+        return {
+            "qr_code": qr_base64,
+            "form_link": form_link,
+            "message": "QR code generated successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating QR code: {str(e)}")
+
+# Enhanced form creation with branding
+@router.post("/forms/create-with-branding")
+def create_form_with_branding(form_data: FormCreate, current_user: str = Depends(verify_token), db: Session = Depends(get_db)):
+    """Create form with branding options"""
+    try:
+        # Check if user exists
+        from database import Admin
+        admin = db.query(Admin).filter(Admin.email == current_user).first()
+        if not admin:
+            raise HTTPException(status_code=403, detail="User not found")
+        
+        # Presenter role has view-only access
+        if admin.role == "presenter":
+            raise HTTPException(status_code=403, detail="View Only - Presenters cannot create forms")
+        
+        # Validate form data
+        if not form_data.title or not form_data.title.strip():
+            raise HTTPException(status_code=400, detail="Form title is required")
+        
+        if not form_data.type or form_data.type not in ["quiz", "poll", "feedback", "attendance"]:
+            raise HTTPException(status_code=400, detail="Invalid form type")
+        
+        # Create form with branding
+        new_form = Form(
+            title=form_data.title.strip(),
+            description=form_data.description.strip() if form_data.description else "",
+            type=form_data.type,
+            settings=json.dumps(form_data.settings) if form_data.settings else json.dumps({}),
+            created_by=current_user,
+            event_id=form_data.event_id,
+            register_link=form_data.register_link.strip() if form_data.register_link else None,
+            is_active=1,
+            # Branding fields
+            banner_image=form_data.banner_image,
+            logo_image=form_data.logo_image,
+            footer_text=form_data.footer_text,
+            brand_colors=json.dumps(form_data.brand_colors) if form_data.brand_colors else None
+        )
+        db.add(new_form)
+        db.flush()
+        
+        # Create questions
+        if form_data.questions:
+            for i, question in enumerate(form_data.questions):
+                if not question.question_text or not question.question_text.strip():
+                    raise HTTPException(status_code=400, detail=f"Question {i+1} text is required")
+                
+                new_question = FormQuestion(
+                    form_id=new_form.id,
+                    question_text=question.question_text.strip(),
+                    question_type=question.question_type,
+                    options=json.dumps(question.options) if question.options else json.dumps([]),
+                    is_required=int(question.is_required),
+                    points=question.points or 0,
+                    correct_answer=question.correct_answer.strip() if question.correct_answer else None,
+                    order_index=i
+                )
+                db.add(new_question)
+        
+        # Create analytics record
+        analytics = FormAnalytics(form_id=new_form.id)
+        db.add(analytics)
+        
+        db.commit()
+        db.refresh(new_form)
+        
+        # Log audit action
+        log_audit_action(db, current_user, admin.role, "create_form", "form", new_form.id, f"Created form with branding: {form_data.title}")
+        
+        # Generate form hash and link for response
+        form_hash = generate_form_hash(new_form)
+        form_link = f"https://events.kambaa.ai/forms/fill/{form_hash}"
+        
+        return {
+            "id": new_form.id, 
+            "message": "Form created successfully with branding",
+            "form_hash": form_hash,
+            "form_link": form_link
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"Error creating form with branding: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error creating form: {str(e)}")
 
 # Test form creation endpoint
 @router.post("/forms/test")

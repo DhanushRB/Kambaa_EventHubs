@@ -192,15 +192,12 @@ function Users() {
     }
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch(
-        `http://localhost:8000/api/users/${userId}/toggle-status`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      const response = await fetch(`http://localhost:8000/api/users/${userId}/toggle-status`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
       if (response.ok) {
         fetchUsers();

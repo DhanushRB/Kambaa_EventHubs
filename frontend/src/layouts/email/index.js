@@ -194,13 +194,10 @@ function Email() {
       async () => {
         try {
           const token = localStorage.getItem("token");
-          const response = await fetch(
-            `http://localhost:8000/api/email-templates/${template.id}`,
-            {
-              method: "DELETE",
-              headers: { Authorization: `Bearer ${token}` },
-            }
-          );
+          const response = await fetch(`http://localhost:8000/api/email-templates/${template.id}`, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${token}` },
+          });
 
           if (response.ok) {
             if (selectedTemplate?.id === template.id) {
@@ -222,12 +219,9 @@ function Email() {
   const handleEditTemplate = async (template) => {
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch(
-        `http://localhost:8000/api/email-templates/${template.id}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
+      const response = await fetch(`http://localhost:8000/api/email-templates/${template.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (response.ok) {
         const fullTemplate = await response.json();
         setEditingTemplate(fullTemplate);
